@@ -3,7 +3,7 @@ module Graphics.Camera (
     module Graphics.Camera.Angle,
     module Graphics.Camera.Classes,
     module Linear,
-    OrthoCam, Cam, Targetted
+    OrthoCam, Cam
     ) where
 
 import Linear
@@ -13,7 +13,7 @@ import Graphics.Camera.Classes
 import Graphics.Camera.Internal
 
 -- | Given a line segment in viewport coordinates, compute an approximate camera rotation
-viewerRotation :: (TargettedCamera t c) => t c a -> V2 a -> V2 a -> Quaternion a
+viewerRotation :: (Camera c) => c a -> V2 a -> V2 a -> Quaternion a
 viewerRotation cam vfrom vto = undefined
 
 -- | Given a line segment in viewport coordinates, compute an approximate camera translation

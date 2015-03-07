@@ -24,27 +24,16 @@ data BaseCamera a = BCam
 
 makeLenses ''BaseCamera
 
-instance Camera BaseCamera where
-    type CamView BaseCamera  = Fractional
-    viewArea = bcamViewport
-    viewRange = bcamViewRange
-    position = bcamPosition
-    orientation = bcamOrientation
-
-
+-- | Orthographic projection camera
 newtype OrthoCam a = OCam { _ocamBaseCamera :: BaseCamera a }
   deriving (Eq, Ord, Typeable)
 
 makeLenses ''OrthoCam
 
 instance Camera OrthoCam where
-    type CamView OrthoCam = Fractional
-    viewArea = ocamBaseCamera . bcamViewport
-    viewRange = ocamBaseCamera . bcamViewRange
-    position = ocamBaseCamera . bcamPosition
-    orientation = ocamBaseCamera . bcamOrientation
+    -- TODO
 
-
+-- | Perspective projection camera
 data Cam a = PCam
     { _pcamBaseCamera  :: BaseCamera a
     , _pcamFocalLength :: a
@@ -54,38 +43,10 @@ data Cam a = PCam
 makeLenses ''Cam
 
 instance Camera Cam where
-    type CamView Cam = Floating
-    viewArea = pcamBaseCamera . bcamViewport
-    viewRange = pcamBaseCamera . bcamViewRange
-    position = pcamBaseCamera . bcamPosition
-    orientation = pcamBaseCamera . bcamOrientation
+    -- TODO
 
-instance ProjCamera Cam where
-    focalLength = pcamFocalLength
-    focus = pcamFocus
+instance PerspectiveCamera Cam where
+    -- TODO
 
-data Targetted c a = TCam
-    { _tcamCamera         :: c a
-    , _tcamTargetPosition :: V3 a
-    , _tcamUpVector       :: V3 a
-    , _tcamForwardVector  :: V3 a
-    } deriving (Eq, Ord, Typeable)
 
-makeLenses ''Targetted
-
-instance (Camera c) => Camera (Targetted c) where
-    type CamView (Targetted c) = CamView c
-    viewArea = tcamCamera . viewArea
-    viewRange = tcamCamera . viewRange
-    position = tcamCamera . position
-    orientation = tcamCamera . orientation
-
-instance (CamView (Targetted c) ~ CamView c, Camera (Targetted c), ProjCamera c) => ProjCamera (Targetted c) where
-    focalLength = tcamCamera . focalLength
-
-instance (Camera c) => TargettedCamera Targetted c where
-    untarget = view tcamCamera
-    targetPosition = tcamTargetPosition
-    upVector = tcamUpVector
-    forwardVector = tcamForwardVector
 
