@@ -10,12 +10,6 @@ import Linear
 import Graphics.Camera.Angle
 import Graphics.Camera.Classes
 
-data BaseCamera a = BCam
-    { _bcamViewport    :: V2 a
-    , _bcamViewRange   :: (a, a)
-    , _bcamPosition    :: V3 a
-    , _bcamOrientation :: Quaternion a
-    } deriving (Eq, Ord, Typeable)
 
 makeLenses ''BaseCamera
 
@@ -24,9 +18,6 @@ newtype OrthoCam a = OCam { _ocamBaseCamera :: BaseCamera a }
   deriving (Eq, Ord, Typeable)
 
 makeLenses ''OrthoCam
-
-instance Camera OrthoCam where
-    -- TODO
 
 -- | Perspective projection camera
 data Cam a = PCam
@@ -37,8 +28,39 @@ data Cam a = PCam
 
 makeLenses ''Cam
 
+class CameraLike c where
+    baseCamera :: Lens' (c a) (BaseCamera a)
+instance CameraLike OrthoCam where
+    baseCamera = ocamBaseCamera
+instance CameraLike Cam where
+    baseCamera = pcamBaseCamera
+
+
+
+instance Camera BaseCamera where
+    viewArea = bcamViewport
+    rangeLimit = bcamViewRange
+    position = bcamPosition
+    orientation = bcamOrientation
+
+instance Camera OrthoCam where
+    cameraMatrix = cameraMatrix . view baseCamera
+    invCameraMatrix = invCameraMatrix . view baseCamera
+    viewMatrix = viewMatrix . view baseCamera
+    invViewMatrix = invViewMatrix . view baseCamera
+    projMatrix = projMatrix . view baseCamera
+    invProjMatrix = invProjMatrix . view baseCamera
+    viewArea = baseCamera.viewArea
+    rangeLimit = baseCamera.rangeLimit
+    position = baseCamera.position
+    orientation = baseCamera.orientation
+    
+
 instance Camera Cam where
-    -- TODO
+    viewArea = baseCamera.viewArea
+    rangeLimit = baseCamera.rangeLimit
+    position = baseCamera.position
+    orientation = baseCamera.orientation
 
 instance PerspectiveCamera Cam where
     -- TODO

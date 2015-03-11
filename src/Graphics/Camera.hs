@@ -45,3 +45,5 @@ viewSpace :: (Camera c) => c a -> [[V3 a]]
 viewSpace cam = undefined
 
 
+
+

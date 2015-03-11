@@ -1,10 +1,13 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes #-}
 module Graphics.Camera.Classes where
 
+import Data.Typeable
 import GHC.Exts
 import Control.Lens
 import Linear
 import Graphics.Camera.Angle
+
 
 -- | The @Camera@ class is a basic common interface to different cameras.
 --
@@ -18,30 +21,30 @@ class Camera c where
     -- @
     -- 'cameraMatrix' c ≡ 'projMatrix' c '!*!' 'viewMatrix' c
     -- @
-    cameraMatrix    :: c a -> M44 a
+    cameraMatrix :: (Floating a) => c a -> M44 a
     
     -- | Extract a transformation matrix from view space to world space.
     --
     -- @
     -- 'invCameraMatrix' c ≡ 'invViewMatrix' c '!*!' 'invProjMatrix' c
     -- @
-    invCameraMatrix :: c a -> M44 a
+    invCameraMatrix :: (Floating a) => c a -> M44 a
     
     -- | Extract a transformation matrix from world space to the camera's local
     --   object space. 
-    viewMatrix      :: c a -> M44 a
+    viewMatrix :: (Floating a) => c a -> M44 a
     
     -- | Extract a transformation matrix from the camera's local object space
     --   to world space.
-    invViewMatrix   :: c a -> M44 a
+    invViewMatrix :: (Floating a) => c a -> M44 a
     
     -- | Extract a transformation matrix from the camera's local object space
     --   to view space.
-    projMatrix      :: c a -> M44 a
+    projMatrix :: (Floating a) => c a -> M44 a
     
     -- | Extract a transformation matrix from view space to the camera's local 
     --   object space.
-    invProjMatrix   :: c a -> M44 a
+    invProjMatrix :: (Floating a) => c a -> M44 a
     
     -- | The dimensions of the image seen by the camera, in view space 
     --   coordinates. Generally this will be the pixel size of the rendered 
@@ -177,6 +180,7 @@ class (Camera c) => PerspectiveCamera c where
     --   * Accesses the Y component of 'fieldOfView'
     fovVertical   :: (Floating a) => Lens' (c a) (Angle a)
 
+
 -- | Compute the focal length for a given sensor size and FOV angle.
 fromFOV :: (Floating a) => a -> Angle a -> a
 fromFOV d a = d / (2 * tan (a^.radians / 2))
@@ -189,4 +193,10 @@ toFOV d f = angleFrom radians $ 2 * atan (d / (2 * f))
 isoFOV :: (Floating a) => a -> Iso' a (Angle a)
 isoFOV x = iso (toFOV x) (fromFOV x) -- . from radians
 
+data BaseCamera a = BCam
+    { _bcamViewport    :: V2 a
+    , _bcamViewRange   :: (a, a)
+    , _bcamPosition    :: V3 a
+    , _bcamOrientation :: Quaternion a
+    } deriving (Eq, Ord, Typeable)
 
