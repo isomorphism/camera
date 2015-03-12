@@ -181,18 +181,6 @@ class (Camera c) => PerspectiveCamera c where
     fovVertical   :: (Floating a) => Lens' (c a) (Angle a)
 
 
--- | Compute the focal length for a given sensor size and FOV angle.
-fromFOV :: (Floating a) => a -> Angle a -> a
-fromFOV d a = d / (2 * tan (a^.radians / 2))
-
--- | Compute the field of view for a given sensor size and focal length.
-toFOV :: (Floating a) => a -> a -> Angle a
-toFOV d f = angleFrom radians $ 2 * atan (d / (2 * f))
-
--- | For a constant sensor size we have an isomorphism between FOV and focal length
-isoFOV :: (Floating a) => a -> Iso' a (Angle a)
-isoFOV x = iso (toFOV x) (fromFOV x) -- . from radians
-
 data BaseCamera a = BCam
     { _bcamViewport    :: V2 a
     , _bcamViewRange   :: (a, a)

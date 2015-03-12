@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Graphics.Camera.Internal where
@@ -22,8 +23,8 @@ makeLenses ''OrthoCam
 -- | Perspective projection camera
 data Cam a = PCam
     { _pcamBaseCamera  :: BaseCamera a
+    , _pcamFocalArea :: Maybe (V2 a)
     , _pcamFocalLength :: a
-    , _pcamFocus :: a
     } deriving (Eq, Ord, Typeable)
 
 makeLenses ''Cam
@@ -63,7 +64,20 @@ instance Camera Cam where
     orientation = baseCamera.orientation
 
 instance PerspectiveCamera Cam where
-    -- TODO
+    focalArea = pcamFocalArea
+    focalLength = pcamFocalLength
 
+
+-- | Compute the focal length for a given sensor size and FOV angle.
+fromFOV :: (Floating a) => a -> Angle a -> a
+fromFOV d a = d / (2 * tan (a^.radians / 2))
+
+-- | Compute the field of view for a given sensor size and focal length.
+toFOV :: (Floating a) => a -> a -> Angle a
+toFOV d f = angleFrom radians $ 2 * atan (d / (2 * f))
+
+-- | For a constant sensor size we have an isomorphism between FOV and focal length
+isoFOV :: (Floating a) => a -> Iso' a (Angle a)
+isoFOV x = iso (toFOV x) (fromFOV x) -- . from radians
 
 
