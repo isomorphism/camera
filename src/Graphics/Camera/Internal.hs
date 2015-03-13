@@ -37,9 +37,9 @@ instance CameraLike Cam where
     baseCamera = pcamBaseCamera
 
 
-
 instance Camera BaseCamera where
     viewArea = bcamViewport
+    viewDiagonal = lens (\c -> sqrt $ (c^.viewWidth)^2 + (c^.viewHeight)^2) (\c d -> c & viewArea %~ fmap ((d / (c^.viewDiagonal)) *))
     rangeLimit = bcamViewRange
     position = bcamPosition
     orientation = bcamOrientation

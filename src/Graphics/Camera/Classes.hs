@@ -55,7 +55,7 @@ class Camera c where
     --   * 'viewWidth' and 'viewHeight' are the X and Y components
     --   * 'viewAspect' is the aspect ratio W/H
     --   * 'viewDiagonal' is the diagonal size of the view area
-    viewArea     :: Lens' (c a) (V2 a)
+    viewArea :: Lens' (c a) (V2 a)
     
     -- | The width of the image seen by the camera, in view space coordinates.
     --
@@ -64,7 +64,9 @@ class Camera c where
     --   * Accesses the X component of 'viewArea'
     --   * Leaves 'viewHeight' unchanged
     --   * Adjusts 'viewDiagonal' and 'viewAspect' to match the new width.
-    viewWidth    :: Lens' (c a) a
+    viewWidth :: Lens' (c a) a
+    viewWidth = viewArea._x
+    
     
     -- | The height of the image seen by the camera, in view space coordinates.
     --
@@ -73,7 +75,8 @@ class Camera c where
     --   * Accesses the Y component of 'viewArea'
     --   * Leaves 'viewWidth' unchanged
     --   * Adjusts 'viewDiagonal' and 'viewAspect' to match the new width.
-    viewHeight   :: Lens' (c a) a
+    viewHeight :: Lens' (c a) a
+    viewHeight = viewArea._y
     
     -- | The aspect ratio of the image seen by the camera. The ratio is W/H, 
     --   i.e. values > 1.0 are wide and short, values < 1.0 are tall and narrow.
@@ -83,7 +86,7 @@ class Camera c where
     --   * Leaves 'viewDiagonal' unchanged
     --   * Adjusts 'viewArea', 'viewWidth', and 'viewHeight' to have the new
     --     aspect ratio with the same diagonal size
-    viewAspect   :: (Floating a) => Lens' (c a) a
+    viewAspect :: (Floating a) => Lens' (c a) a
     
     -- | The diagonal size of the image seen by the camera, in view space 
     --   coordinates.
