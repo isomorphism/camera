@@ -1,4 +1,3 @@
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Graphics.Camera.Internal where
@@ -11,11 +10,22 @@ import Linear
 import Graphics.Camera.Angle
 import Graphics.Camera.Classes
 
+-- | Generic 3D camera
+data BaseCamera a = BCam
+    { _bcamViewport    :: V2 a
+    , _bcamViewRange   :: (a, a)
+    , _bcamPosition    :: V3 a
+    , _bcamOrientation :: Quaternion a
+    } deriving (Eq, Ord, Typeable)
 
 makeLenses ''BaseCamera
 
 -- | Orthographic projection camera
-newtype OrthoCam a = OCam { _ocamBaseCamera :: BaseCamera a }
+data OrthoCam a = OCam 
+    { _ocamBaseCamera :: BaseCamera a 
+    , _ocamHRange :: (a, a)
+    , _ocamVRange :: (a, a)
+    }
   deriving (Eq, Ord, Typeable)
 
 makeLenses ''OrthoCam
@@ -29,55 +39,43 @@ data Cam a = PCam
 
 makeLenses ''Cam
 
-class CameraLike c where
-    baseCamera :: Lens' (c a) (BaseCamera a)
-instance CameraLike OrthoCam where
-    baseCamera = ocamBaseCamera
-instance CameraLike Cam where
-    baseCamera = pcamBaseCamera
-
-
-instance Camera BaseCamera where
-    viewArea = bcamViewport
-    viewDiagonal = lens (\c -> sqrt $ (c^.viewWidth)^2 + (c^.viewHeight)^2) (\c d -> c & viewArea %~ fmap ((d / (c^.viewDiagonal)) *))
-    rangeLimit = bcamViewRange
-    position = bcamPosition
-    orientation = bcamOrientation
 
 instance Camera OrthoCam where
-    cameraMatrix = cameraMatrix . view baseCamera
-    invCameraMatrix = invCameraMatrix . view baseCamera
-    viewMatrix = viewMatrix . view baseCamera
-    invViewMatrix = invViewMatrix . view baseCamera
-    projMatrix = projMatrix . view baseCamera
-    invProjMatrix = invProjMatrix . view baseCamera
-    viewArea = baseCamera.viewArea
-    rangeLimit = baseCamera.rangeLimit
-    position = baseCamera.position
-    orientation = baseCamera.orientation
-    
+    viewArea = ocamBaseCamera.bcamViewport
+
+
+instance Camera3D OrthoCam where
+    viewMatrix c = mkTransformation (c^.orientation) (c^.position)
+    invViewMatrix c = mkTransformation (c^.orientation & _ijk.each %~ negate) (c^.position & each %~ negate)
+    projMatrix c = ortho (c^.leftClip)   (c^.rightClip) 
+                         (c^.bottomClip) (c^.topClip)
+                         (c^.nearLimit)  (c^.farLimit)
+    invProjMatrix c = inverseOrtho (c^.leftClip)   (c^.rightClip) 
+                                   (c^.bottomClip) (c^.topClip)
+                                   (c^.nearLimit)  (c^.farLimit)
+    rangeLimit = ocamBaseCamera.bcamViewRange
+    position = ocamBaseCamera.bcamPosition
+    orientation = ocamBaseCamera.bcamOrientation
+
+instance OrthographicCamera OrthoCam where
+    horizontalRange = ocamHRange
+    verticalRange = ocamVRange
 
 instance Camera Cam where
-    viewArea = baseCamera.viewArea
-    rangeLimit = baseCamera.rangeLimit
-    position = baseCamera.position
-    orientation = baseCamera.orientation
+    viewArea = pcamBaseCamera.bcamViewport
+
+instance Camera3D Cam where
+    viewMatrix c = mkTransformation (c^.orientation) (c^.position)
+    invViewMatrix c = mkTransformation (c^.orientation & _ijk.each %~ negate) (c^.position & each %~ negate)
+    projMatrix c = perspective (c^.fovVertical.radians) (c^.fovAspect) (c^.nearLimit) (c^.farLimit)
+    invProjMatrix c = inversePerspective (c^.fovVertical.radians) (c^.fovAspect) (c^.nearLimit) (c^.farLimit)
+    rangeLimit = pcamBaseCamera.bcamViewRange
+    position = pcamBaseCamera.bcamPosition
+    orientation = pcamBaseCamera.bcamOrientation
 
 instance PerspectiveCamera Cam where
     focalArea = pcamFocalArea
     focalLength = pcamFocalLength
 
-
--- | Compute the focal length for a given sensor size and FOV angle.
-fromFOV :: (Floating a) => a -> Angle a -> a
-fromFOV d a = d / (2 * tan (a^.radians / 2))
-
--- | Compute the field of view for a given sensor size and focal length.
-toFOV :: (Floating a) => a -> a -> Angle a
-toFOV d f = angleFrom radians $ 2 * atan (d / (2 * f))
-
--- | For a constant sensor size we have an isomorphism between FOV and focal length
-isoFOV :: (Floating a) => a -> Iso' a (Angle a)
-isoFOV x = iso (toFOV x) (fromFOV x) -- . from radians
 
 
