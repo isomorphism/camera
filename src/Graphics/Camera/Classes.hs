@@ -12,7 +12,9 @@ import GHC.Exts
 import Control.Lens
 import Linear hiding (distance)
 
+import Graphics.Camera.Internal
 import Graphics.Camera.Angle
+import Graphics.Camera.Types
 
 
 -- | The @Camera@ class is a basic common interface to different cameras.
@@ -75,6 +77,22 @@ class Camera c where
     --     diagonal size with the same aspect ratio
     viewDiagonal :: (Floating a) => Lens' (c a) a
     viewDiagonal = lens (\c -> sqrt $ (c^.viewWidth)^2 + (c^.viewHeight)^2) (\c d -> c & viewArea %~ fmap ((d / (c^.viewDiagonal)) *))
+
+
+instance Camera OrthoCam where
+    viewArea = ocamBaseCamera.bcamViewport
+
+instance Camera Cam where
+    viewArea = pcamBaseCamera.bcamViewport
+
+instance (Camera c) => Camera (Jib c) where
+    viewArea = jibCamera.viewArea
+
+instance (Camera c) => Camera (Gimbal c) where
+    viewArea = gimbalCamera.viewArea
+
+
+
 
 -- | The @Camera3D@ class is an interface to cameras that exist in a 3D scene.
 -- 
@@ -183,31 +201,64 @@ class (Camera c) => Camera3D c where
     -- 'orientation' should have a magnitude of 1.
     orientation :: Lens' (c a) (Quaternion a)
 
-forwardVector :: (Camera3D c, Num a) => c a -> Lens' (M33 a) (V3 a)
-forwardVector c = axisVector (c^.forward)
 
-axisVector :: (Foldable v, Additive v, Additive t, Num a) => v a -> Lens' (v (t a)) (t a)
-axisVector fwd = lens get set
-  where fwd' = V1 <$> fwd
-        get m = fwd *! m 
-        set m v = m !+! fwd' !*! (V1 v !-! V1 fwd !*! m)
+instance Camera3D OrthoCam where
+    coordinateSystem = ocamBaseCamera.bcamCoords.iso (_z %~ negate) (_z %~ negate)
+    viewMatrix = to $ \c -> mkTransformation (c^.orientation) (c^.position)
+    invViewMatrix = to $ \c -> mkTransformation (c^.orientation & _ijk.each %~ negate) (c^.position & each %~ negate)
+    projMatrix = to $ 
+        \c -> ortho (c^.leftClip)   (c^.rightClip) 
+                    (c^.bottomClip) (c^.topClip)
+                    (c^.nearLimit)  (c^.farLimit)
+          !*! mkTransformationMat (c^.coordinateSystem) 0
+    invProjMatrix = to $ 
+        \c -> mkTransformationMat (fromMaybe (error "non-orthogonal coordinate system") (inv33 $ c^.coordinateSystem)) 0
+          !*! inverseOrtho (c^.leftClip)   (c^.rightClip) 
+                           (c^.bottomClip) (c^.topClip)
+                           (c^.nearLimit)  (c^.farLimit)
+    rangeLimit = ocamBaseCamera.bcamViewRange
+    position = ocamBaseCamera.bcamPosition
+    orientation = ocamBaseCamera.bcamOrientation
 
--- | Describes the coordinate system of an unrotated camera.
-data CoordinateSystem a
-        -- | Coordinate system common in 3D modeling applications. The positive Z
-        --   axis points up and the positive Y axis points forward.
-        = VerticalZ 
-        -- | Coordinate system common in 3D graphics programming. The positive Y
-        --   axis points up and the positive Z axis points forward. This is a 
-        --   left-handed coordinate system.
-        | ZForward
-        -- | Coordinate system common in 3D graphics programming. The positive Y
-        --   axis points up and the positive Z axis points backward. This is a 
-        --   right-handed coordinate system.
-        | ZBackward
-        -- | Arbitrary coordinate system, specified as @('V3' rightward upward forward)@
-        | OtherCoords (M33 a)
-  deriving (Eq, Ord, Read, Show, Data, Typeable)
+instance Camera3D Cam where
+    coordinateSystem = pcamBaseCamera.bcamCoords.iso (_z %~ negate) (_z %~ negate)
+    viewMatrix = to $ \c -> mkTransformation (c^.orientation) (c^.position)
+    invViewMatrix = to $ \c -> mkTransformation (c^.orientation & _ijk.each %~ negate) (c^.position & each %~ negate)
+    projMatrix = to $ 
+        \c -> perspective (c^.fovVertical.radians) (c^.viewAspect) (c^.nearLimit) (c^.farLimit)
+          !*! mkTransformationMat (c^.coordinateSystem) 0
+    invProjMatrix = to $ 
+        \c -> mkTransformationMat (fromMaybe (error "non-orthogonal coordinate system") (inv33 $ c^.coordinateSystem)) 0
+          !*! inversePerspective (c^.fovVertical.radians) (c^.viewAspect) (c^.nearLimit) (c^.farLimit) 
+    rangeLimit = pcamBaseCamera.bcamViewRange
+    position = pcamBaseCamera.bcamPosition
+    orientation = pcamBaseCamera.bcamOrientation
+
+instance (Camera3D c) => Camera3D (Jib c) where
+    coordinateSystem = jibCamera.coordinateSystem
+    viewMatrix = to $ \c -> mkTransformationMat eye3 (negate <$> c^.displacement) !*! c^.jibCamera.viewMatrix 
+    invViewMatrix = to $ \c -> c^.jibCamera.invViewMatrix !*! mkTransformationMat eye3 (c^.displacement)
+    projMatrix = jibCamera.projMatrix
+    invProjMatrix = jibCamera.invProjMatrix
+    position = jibCamera.position
+    orientation = jibCamera.orientation
+    rangeLimit = jibCamera.rangeLimit
+
+instance (Camera3D c) => Camera3D (Gimbal c) where
+    coordinateSystem = gimbalCamera.coordinateSystem
+    viewMatrix = to $ 
+        \c -> let rot = m33_to_m44 . fromQuaternion $ c^.gimbalRotation
+              in rot !*! c^.gimbalCamera.viewMatrix 
+    invViewMatrix = to $ 
+        \c -> let rot = m33_to_m44 . fromQuaternion $ c^.invGimbalRotation
+              in c^.gimbalCamera.invViewMatrix !*! rot
+    projMatrix = gimbalCamera.projMatrix
+    invProjMatrix = gimbalCamera.invProjMatrix
+    position = gimbalCamera.position
+    orientation = gimbalCamera.orientation
+    rangeLimit = gimbalCamera.rangeLimit
+
+
 
 -- | The @PerspectiveCamera@ class is an interface to perspective projection
 --   cameras. Which seems kind of redundant, and /would/ be in real life, but
@@ -288,31 +339,34 @@ class (Camera3D c) => PerspectiveCamera c where
     fovVertical = fieldOfView._y
 
 
+instance PerspectiveCamera Cam where
+    perspectiveCamera v cd fl near far = PCam (BCam coordsMatrix v (near, far) 0 1) Nothing fl
+      where coordsMatrix = case cd of
+                VerticalZ -> V3 (V3 1 0 0) (V3 0 0 1) (V3 0 1 0)
+                ZForward  -> V3 (V3 1 0 0) (V3 0 1 0) (V3 0 0 1)
+                ZBackward -> V3 (V3 1 0 0) (V3 0 1 0) (V3 0 0 (-1))
+                OtherCoords m -> m
+    focalArea = pcamFocalArea
+    focalLength = pcamFocalLength
+
+instance (PerspectiveCamera c) => PerspectiveCamera (Jib c) where
+    perspectiveCamera v cd fl near far = newJib $ perspectiveCamera v cd fl near far
+    focalArea = jibCamera.focalArea
+    focalLength = jibCamera.focalLength
+
+instance (PerspectiveCamera c) => PerspectiveCamera (Gimbal c) where
+    perspectiveCamera v cd fl near far = newGimbal $ perspectiveCamera v cd fl near far
+    focalArea = gimbalCamera.focalArea
+    focalLength = gimbalCamera.focalLength
+
+
+forwardVector :: (Camera3D c, Num a) => c a -> Lens' (M33 a) (V3 a)
+forwardVector c = axisVector (c^.forward)
+
 -- | Compute the effective focal area for a camera, either an explicitly set
 --   value or the default.
 effectiveFocalArea :: (PerspectiveCamera c, Floating a) => c a -> V2 a
 effectiveFocalArea c = fromMaybe ((c & viewDiagonal *~ 0.042)^.viewArea) (c^.focalArea)
-
--- | Compute the focal length for a given sensor size and FOV angle.
-toFocalLength :: (Floating a) => a -> Angle a -> a
-toFocalLength d a = d / (2 * tan (a^.radians / 2))
-
--- | Compute the sensor size for a focal length and FOV angle.
-toSensorSize :: (Floating a) => a -> Angle a -> a
-toSensorSize l a = l * (2 * tan (a^.radians / 2))
-
--- | Compute the field of view for a given sensor size and focal length.
-toFOV :: (Floating a) => a -> a -> Angle a
-toFOV d f = angleFrom radians $ 2 * atan (d / (2 * f))
-
--- | For a constant sensor size we have an isomorphism between FOV and focal length
-isoFocalLengthFOV :: (Floating a) => a -> Iso' a (Angle a)
-isoFocalLengthFOV sz = iso (toFOV sz) (toFocalLength sz)
-
--- | For a constant focal length we have an isomorphism between FOV and sensor size
-isoSensorFOV :: (Floating a) => a -> Iso' a (Angle a)
-isoSensorFOV fl = iso (flip toFOV fl) (toSensorSize fl)
-
 
 -- | The @OrthographicCamera@ class is an interface to orthographic projection
 --   cameras.
@@ -385,6 +439,26 @@ class (Camera3D c) => OrthographicCamera c where
     topClip = verticalRange._2
 
 
+instance OrthographicCamera OrthoCam where
+    orthoCamera v@(V2 w h) near far = OCam (BCam eye3 v (near, far) 0 1) (0, w) (0, h)
+    orthoFromPlanes v l r b t n f = OCam (BCam eye3 v (n, f) 0 1) (l, r) (b, t)
+    horizontalRange = ocamHRange
+    verticalRange = ocamVRange
+
+instance (OrthographicCamera c) => OrthographicCamera (Jib c) where
+    orthoCamera v near far = newJib $ orthoCamera v near far 
+    orthoFromPlanes v l r b t n f = newJib $ orthoFromPlanes v l r b t n f
+    horizontalRange = jibCamera.horizontalRange
+    verticalRange = jibCamera.verticalRange
+
+instance (OrthographicCamera c) => OrthographicCamera (Gimbal c) where
+    orthoCamera v near far = newGimbal $ orthoCamera v near far 
+    orthoFromPlanes v l r b t n f = newGimbal $ orthoFromPlanes v l r b t n f
+    horizontalRange = gimbalCamera.horizontalRange
+    verticalRange = gimbalCamera.verticalRange
+
+
+
 -- | Jib operations apply an offset to a camera in its local coordinate space.
 class (Camera3D c) => JibCamera c where
     -- | Displacement of camera relative to its base position.
@@ -395,6 +469,13 @@ class (Camera3D c) => JibCamera c where
     distance = lens 
         (\c -> dot (c^.displacement) (c^.forward))
         (\c d -> c & displacement +~ (pure d * c^.forward) - (c^.displacement * abs (c^.forward)))
+
+instance (Camera3D c) => JibCamera (Jib c) where
+    displacement = jibDisplacement
+
+instance (JibCamera c) => JibCamera (Gimbal c) where
+    displacement = gimbalCamera.displacement
+
 
 -- | Gimbal operations apply a sequence of rotations to a camera in its local 
 --   coordinate space.
@@ -415,6 +496,15 @@ class (Camera3D c) => GimbalCamera c where
             * axisAngle (c^.rightward) (- c^.elevation.radians) 
             * axisAngle (c^.upward)    (- c^.heading.radians)
 
+instance (GimbalCamera c) => GimbalCamera (Jib c) where
+    heading = jibCamera.heading
+    elevation = jibCamera.elevation
+    roll = jibCamera.roll
+
+instance (Camera3D c) => GimbalCamera (Gimbal c) where
+    heading = gimbalHeading
+    elevation = gimbalElevation
+    roll = gimbalRoll
 
 
 

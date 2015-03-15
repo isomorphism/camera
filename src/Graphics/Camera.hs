@@ -15,6 +15,7 @@ import Linear hiding (distance)
 import Graphics.Camera.Angle
 import Graphics.Camera.Classes
 import Graphics.Camera.Internal
+import Graphics.Camera.Types
 
 -- | Given a line segment in viewport coordinates, compute an approximate camera rotation
 viewerRotation :: (Camera3D c) => c a -> V2 a -> V2 a -> Quaternion a
