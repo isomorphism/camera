@@ -307,7 +307,7 @@ class (Camera3D c) => PerspectiveCamera c where
     focalArea    :: Lens' (c a) (Maybe (V2 a))
 
     -- | The angular field of view of the virtual camera. For "sensor" size /d/ 
-    --   and focal length /f/, field of view is given by /fov = 2 arctan(d / 2f)/.
+    --   and focal length /f/, field of view is given by /fov = 2 arctan(d \/ 2f)/.
     --
     --   Both dimensions should be positive, non-zero angles.
     --   
@@ -358,10 +358,6 @@ instance (PerspectiveCamera c) => PerspectiveCamera (Gimbal c) where
     perspectiveCamera v cd fl near far = newGimbal $ perspectiveCamera v cd fl near far
     focalArea = gimbalCamera.focalArea
     focalLength = gimbalCamera.focalLength
-
-
-forwardVector :: (Camera3D c, Num a) => c a -> Lens' (M33 a) (V3 a)
-forwardVector c = axisVector (c^.forward)
 
 -- | Compute the effective focal area for a camera, either an explicitly set
 --   value or the default.
@@ -480,16 +476,23 @@ instance (JibCamera c) => JibCamera (Gimbal c) where
 -- | Gimbal operations apply a sequence of rotations to a camera in its local 
 --   coordinate space.
 class (Camera3D c) => GimbalCamera c where
+    -- | Rotation angle in the horizontal plane
     heading :: Lens' (c a) (Angle a)
+    
+    -- | Rotation around the camera's horizontal axis
     elevation :: Lens' (c a) (Angle a)
+    
+    -- | Rotation around the camera's view direction
     roll :: Lens' (c a) (Angle a)
     
+    -- | All three rotations combined
     gimbalRotation :: (Epsilon a, RealFloat a) => Getter (c a) (Quaternion a)
     gimbalRotation = to $ 
         \c -> axisAngle (c^.forward)   (c^.roll.radians) 
             * axisAngle (c^.rightward) (c^.elevation.radians) 
             * axisAngle (c^.upward)    (c^.heading.radians)
     
+    -- | The inverse of 'gimbalRotation'.
     invGimbalRotation :: (Epsilon a, RealFloat a) => Getter (c a) (Quaternion a)
     invGimbalRotation = to $ 
         \c -> axisAngle (c^.forward)   (- c^.roll.radians) 

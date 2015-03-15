@@ -42,6 +42,7 @@ data Cam a = PCam
 
 makeLenses ''Cam
 
+-- | Modifier that applies an offset to a camera in its local coordinate space.
 data Jib c a = Jib
     { _jibCamera       :: c a
     , _jibDisplacement :: !(V3 a)
@@ -53,6 +54,8 @@ newJib :: (Num a) => c a -> Jib c a
 newJib c = Jib c 0
 
 
+-- | Modifier that applies a sequence of rotations to a camera in its local 
+--   coordinate space.
 data Gimbal c a = Gimbal
     { _gimbalCamera    :: c a
     , _gimbalHeading   :: !(Angle a)
