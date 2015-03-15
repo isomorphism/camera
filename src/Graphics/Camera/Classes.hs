@@ -1,13 +1,16 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes #-}
 module Graphics.Camera.Classes where
 
 import Control.Applicative
+import Data.Foldable
 import Data.Maybe
+import Data.Data
 import Data.Typeable
 import GHC.Exts
 
 import Control.Lens
-import Linear
+import Linear hiding (distance)
 
 import Graphics.Camera.Angle
 
@@ -116,7 +119,7 @@ class (Camera c) => Camera3D c where
     -- @
     -- 'cameraMatrix' c ≡ 'projMatrix' c '!*!' 'viewMatrix' c
     -- @
-    cameraMatrix :: (Epsilon a, Floating a) => Getter (c a) (M44 a)
+    cameraMatrix :: (Epsilon a, RealFloat a) => Getter (c a) (M44 a)
     cameraMatrix = to $ \c -> c^.projMatrix !*! c^.viewMatrix
     
     -- | Extract a transformation matrix from view space to world space.
@@ -125,24 +128,24 @@ class (Camera c) => Camera3D c where
     -- @
     -- 'invCameraMatrix' c ≡ 'invViewMatrix' c '!*!' 'invProjMatrix' c
     -- @
-    invCameraMatrix :: (Epsilon a, Floating a) => Getter (c a) (M44 a)
+    invCameraMatrix :: (Epsilon a, RealFloat a) => Getter (c a) (M44 a)
     invCameraMatrix = to $ \c -> c^.invViewMatrix !*! c^.invProjMatrix
     
     -- | Extract a transformation matrix from world space to the camera's local
     --   object space. 
-    viewMatrix :: (Floating a) => Getter (c a) (M44 a)
+    viewMatrix :: (Epsilon a, RealFloat a) => Getter (c a) (M44 a)
     
     -- | Extract a transformation matrix from the camera's local object space
     --   to world space.
-    invViewMatrix :: (Floating a) => Getter (c a) (M44 a)
+    invViewMatrix :: (Epsilon a, RealFloat a) => Getter (c a) (M44 a)
     
     -- | Extract a transformation matrix from the camera's local object space
     --   to view space.
-    projMatrix :: (Epsilon a, Floating a) => Getter (c a) (M44 a)
+    projMatrix :: (Epsilon a, RealFloat a) => Getter (c a) (M44 a)
     
     -- | Extract a transformation matrix from view space to the camera's local 
     --   object space.
-    invProjMatrix :: (Epsilon a, Floating a) => Getter (c a) (M44 a)
+    invProjMatrix :: (Epsilon a, RealFloat a) => Getter (c a) (M44 a)
 
     
     -- | The depth range seen by the camera, in view space coordinates, as 
@@ -180,6 +183,32 @@ class (Camera c) => Camera3D c where
     -- 'orientation' should have a magnitude of 1.
     orientation :: Lens' (c a) (Quaternion a)
 
+forwardVector :: (Camera3D c, Num a) => c a -> Lens' (M33 a) (V3 a)
+forwardVector c = axisVector (c^.forward)
+
+axisVector :: (Foldable v, Additive v, Additive t, Num a) => v a -> Lens' (v (t a)) (t a)
+axisVector fwd = lens get set
+  where fwd' = V1 <$> fwd
+        get m = fwd *! m 
+        set m v = m !+! fwd' !*! (V1 v !-! V1 fwd !*! m)
+
+-- | Describes the coordinate system of an unrotated camera.
+data CoordinateSystem a
+        -- | Coordinate system common in 3D modeling applications. The positive Z
+        --   axis points up and the positive Y axis points forward.
+        = VerticalZ 
+        -- | Coordinate system common in 3D graphics programming. The positive Y
+        --   axis points up and the positive Z axis points forward. This is a 
+        --   left-handed coordinate system.
+        | ZForward
+        -- | Coordinate system common in 3D graphics programming. The positive Y
+        --   axis points up and the positive Z axis points backward. This is a 
+        --   right-handed coordinate system.
+        | ZBackward
+        -- | Arbitrary coordinate system, specified as @('V3' rightward upward forward)@
+        | OtherCoords (M33 a)
+  deriving (Eq, Ord, Read, Show, Data, Typeable)
+
 -- | The @PerspectiveCamera@ class is an interface to perspective projection
 --   cameras. Which seems kind of redundant, and /would/ be in real life, but
 --   some properties don't really make sense on (non-physical) orthographic 
@@ -190,6 +219,15 @@ class (Camera c) => Camera3D c where
 --    In particular, this may result in throwing exceptions and/or violating
 --    the lens laws.
 class (Camera3D c) => PerspectiveCamera c where
+    -- | Create a perspective view camera.
+    perspectiveCamera :: (RealFloat a)
+                      => V2 a               -- ^ Viewport size
+                      -> CoordinateSystem a -- ^ Coordinate system
+                      -> a                  -- ^ Focal length
+                      -> a                  -- ^ Near clipping plane
+                      -> a                  -- ^ Far clipping plane
+                      -> c a
+
     -- | The "focal length" of the virtual camera.
     --
     --   'focalLength' should be a positive, non-zero value.
@@ -228,13 +266,8 @@ class (Camera3D c) => PerspectiveCamera c where
     fieldOfView :: (Floating a) => Lens' (c a) (V2 (Angle a))
     fieldOfView = lens get set
       where
-        defaultArea c = (c & viewDiagonal .~ 42)^.viewArea
-        get c = V2 (toFOV w $ c^.focalLength) (toFOV h $ c^.focalLength)
-          where V2 w h = fromMaybe (defaultArea c) (c^.focalArea)
+        get c = toFOV <$> effectiveFocalArea c <*> pure (c^.focalLength)
         set c sz = c & focalArea .~ Just (toSensorSize (c^.focalLength) <$> sz)
-    
-    fovAspect :: (Floating a) => Getter (c a) a
-    fovAspect = to $ \c -> c^.fovHorizontal.turns / c^.fovVertical.turns
     
     -- | The angular field of view of the virtual camera along the horizontal 
     --   view axis. 
@@ -255,6 +288,32 @@ class (Camera3D c) => PerspectiveCamera c where
     fovVertical = fieldOfView._y
 
 
+-- | Compute the effective focal area for a camera, either an explicitly set
+--   value or the default.
+effectiveFocalArea :: (PerspectiveCamera c, Floating a) => c a -> V2 a
+effectiveFocalArea c = fromMaybe ((c & viewDiagonal *~ 0.042)^.viewArea) (c^.focalArea)
+
+-- | Compute the focal length for a given sensor size and FOV angle.
+toFocalLength :: (Floating a) => a -> Angle a -> a
+toFocalLength d a = d / (2 * tan (a^.radians / 2))
+
+-- | Compute the sensor size for a focal length and FOV angle.
+toSensorSize :: (Floating a) => a -> Angle a -> a
+toSensorSize l a = l * (2 * tan (a^.radians / 2))
+
+-- | Compute the field of view for a given sensor size and focal length.
+toFOV :: (Floating a) => a -> a -> Angle a
+toFOV d f = angleFrom radians $ 2 * atan (d / (2 * f))
+
+-- | For a constant sensor size we have an isomorphism between FOV and focal length
+isoFocalLengthFOV :: (Floating a) => a -> Iso' a (Angle a)
+isoFocalLengthFOV sz = iso (toFOV sz) (toFocalLength sz)
+
+-- | For a constant focal length we have an isomorphism between FOV and sensor size
+isoSensorFOV :: (Floating a) => a -> Iso' a (Angle a)
+isoSensorFOV fl = iso (flip toFOV fl) (toSensorSize fl)
+
+
 -- | The @OrthographicCamera@ class is an interface to orthographic projection
 --   cameras.
 --
@@ -263,6 +322,26 @@ class (Camera3D c) => PerspectiveCamera c where
 --    In particular, this may result in throwing exceptions and/or violating
 --    the lens laws.
 class (Camera3D c) => OrthographicCamera c where
+    
+    -- | Create an orthographic camera with a view size and depth range. World
+    --   space coordinates are assumed to match the viewport coordinates.
+    orthoCamera :: (RealFloat a) 
+                => V2 a -- ^ Viewport size
+                -> a    -- ^ Near clipping plane
+                -> a    -- ^ Far clipping plane
+                -> c a
+    
+    -- | Create an orthographic camera from a view size and six clipping planes
+    orthoFromPlanes :: (RealFloat a) 
+                    => V2 a -- ^ Viewport size
+                    -> a    -- ^ Left
+                    -> a    -- ^ Right
+                    -> a    -- ^ Bottom
+                    -> a    -- ^ Top
+                    -> a    -- ^ Near
+                    -> a    -- ^ Far
+                    -> c a
+    
     -- | The horizontal clipping planes. 
     -- 
     --   Both components should be non-zero, and 'leftClip' should be less than
@@ -306,26 +385,35 @@ class (Camera3D c) => OrthographicCamera c where
     topClip = verticalRange._2
 
 
+-- | Jib operations apply an offset to a camera in its local coordinate space.
+class (Camera3D c) => JibCamera c where
+    -- | Displacement of camera relative to its base position.
+    displacement :: Lens' (c a) (V3 a)
+    
+    -- | Displacement along the camera's forward axis.
+    distance :: (Num a) => Lens' (c a) a
+    distance = lens 
+        (\c -> dot (c^.displacement) (c^.forward))
+        (\c d -> c & displacement +~ (pure d * c^.forward) - (c^.displacement * abs (c^.forward)))
 
--- | Compute the focal length for a given sensor size and FOV angle.
-toFocalLength :: (Floating a) => a -> Angle a -> a
-toFocalLength d a = d / (2 * tan (a^.radians / 2))
-
--- | Compute the sensor size for a focal length and FOV angle.
-toSensorSize :: (Floating a) => a -> Angle a -> a
-toSensorSize l a = l * (2 * tan (a^.radians / 2))
-
--- | Compute the field of view for a given sensor size and focal length.
-toFOV :: (Floating a) => a -> a -> Angle a
-toFOV d f = angleFrom radians $ 2 * atan (d / (2 * f))
-
--- | For a constant sensor size we have an isomorphism between FOV and focal length
-isoFocalLengthFOV :: (Floating a) => a -> Iso' a (Angle a)
-isoFocalLengthFOV sz = iso (toFOV sz) (toFocalLength sz)
-
--- | For a constant focal length we have an isomorphism between FOV and sensor size
-isoSensorFOV :: (Floating a) => a -> Iso' a (Angle a)
-isoSensorFOV fl = iso (flip toFOV fl) (toSensorSize fl)
+-- | Gimbal operations apply a sequence of rotations to a camera in its local 
+--   coordinate space.
+class (Camera3D c) => GimbalCamera c where
+    heading :: Lens' (c a) (Angle a)
+    elevation :: Lens' (c a) (Angle a)
+    roll :: Lens' (c a) (Angle a)
+    
+    gimbalRotation :: (Epsilon a, RealFloat a) => Getter (c a) (Quaternion a)
+    gimbalRotation = to $ 
+        \c -> axisAngle (c^.forward)   (c^.roll.radians) 
+            * axisAngle (c^.rightward) (c^.elevation.radians) 
+            * axisAngle (c^.upward)    (c^.heading.radians)
+    
+    invGimbalRotation :: (Epsilon a, RealFloat a) => Getter (c a) (Quaternion a)
+    invGimbalRotation = to $ 
+        \c -> axisAngle (c^.forward)   (- c^.roll.radians) 
+            * axisAngle (c^.rightward) (- c^.elevation.radians) 
+            * axisAngle (c^.upward)    (- c^.heading.radians)
 
 
 
