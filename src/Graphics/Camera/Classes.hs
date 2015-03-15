@@ -80,14 +80,44 @@ class Camera c where
 --    In particular, this may result in throwing exceptions and/or violating
 --    the lens laws.
 class (Camera c) => Camera3D c where    
-        -- | Extract a transformation matrix from world space to view space.
+    -- | The base coordinate system for an unrotated camera.
+    coordinateSystem :: (Num a) => Lens' (c a) (M33 a)
+    
+    -- | The rightward axis, projected as the viewport positive X direction
+    --
+    --   * This is almost always @('V3' 1 0 0)@.
+    rightward :: (Num a) => Lens' (c a) (V3 a)
+    rightward = coordinateSystem._x
+    
+    -- | The upward axis, projected as the viewport positive Y direction
+    --
+    --   * This is conventionally @('V3' 0 1 0)@ in 3D graphics programming, 
+    --     mapping the positive Y axis to the positive Y axis.
+    --   * This is conventionally @('V3' 0 0 1)@ in many 3D modeling 
+    --     applications (e.g., Blender), so that the Z axis is vertical and the
+    --     XY plane is horizontal.
+    upward :: (Num a) => Lens' (c a) (V3 a)
+    upward = coordinateSystem._y
+    
+    -- | The forward axis, projected as viewport positive depth
+    --
+    --    * This is conventionally the Z axis in 3D graphics programming, 
+    --      either @('V3' 0 0 1)@ for a left-handed coordinate system or 
+    --      @('V3' 0 0 (-1))@ for right-handed.
+    --   * This is conventionally @('V3' 0 1 0)@ in many 3D modeling 
+    --     applications (e.g., Blender), so that the Z axis is vertical and the
+    --     XY plane is horizontal.
+    forward :: (Num a) => Lens' (c a) (V3 a)
+    forward = coordinateSystem._z
+    
+    -- | Extract a transformation matrix from world space to view space.
     --
     -- For 3D cameras:
     -- @
     -- 'cameraMatrix' c ≡ 'projMatrix' c '!*!' 'viewMatrix' c
     -- @
-    cameraMatrix :: (Floating a) => c a -> M44 a
-    cameraMatrix c = projMatrix c !*! viewMatrix c
+    cameraMatrix :: (Epsilon a, Floating a) => Getter (c a) (M44 a)
+    cameraMatrix = to $ \c -> c^.projMatrix !*! c^.viewMatrix
     
     -- | Extract a transformation matrix from view space to world space.
     --
@@ -95,24 +125,24 @@ class (Camera c) => Camera3D c where
     -- @
     -- 'invCameraMatrix' c ≡ 'invViewMatrix' c '!*!' 'invProjMatrix' c
     -- @
-    invCameraMatrix :: (Floating a) => c a -> M44 a
-    invCameraMatrix c = invViewMatrix c !*! invProjMatrix c
+    invCameraMatrix :: (Epsilon a, Floating a) => Getter (c a) (M44 a)
+    invCameraMatrix = to $ \c -> c^.invViewMatrix !*! c^.invProjMatrix
     
     -- | Extract a transformation matrix from world space to the camera's local
     --   object space. 
-    viewMatrix :: (Floating a) => c a -> M44 a
+    viewMatrix :: (Floating a) => Getter (c a) (M44 a)
     
     -- | Extract a transformation matrix from the camera's local object space
     --   to world space.
-    invViewMatrix :: (Floating a) => c a -> M44 a
+    invViewMatrix :: (Floating a) => Getter (c a) (M44 a)
     
     -- | Extract a transformation matrix from the camera's local object space
     --   to view space.
-    projMatrix :: (Floating a) => c a -> M44 a
+    projMatrix :: (Epsilon a, Floating a) => Getter (c a) (M44 a)
     
     -- | Extract a transformation matrix from view space to the camera's local 
     --   object space.
-    invProjMatrix :: (Floating a) => c a -> M44 a
+    invProjMatrix :: (Epsilon a, Floating a) => Getter (c a) (M44 a)
 
     
     -- | The depth range seen by the camera, in view space coordinates, as 
