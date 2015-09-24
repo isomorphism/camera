@@ -236,8 +236,8 @@ instance Camera3D Cam where
 
 instance (Camera3D c) => Camera3D (Jib c) where
     coordinateSystem = jibCamera.coordinateSystem
-    viewMatrix = to $ \c -> mkTransformationMat eye3 (negate <$> c^.displacement) !*! c^.jibCamera.viewMatrix 
-    invViewMatrix = to $ \c -> c^.jibCamera.invViewMatrix !*! mkTransformationMat eye3 (c^.displacement)
+    viewMatrix = to $ \c -> mkTransformationMat identity (negate <$> c^.displacement) !*! c^.jibCamera.viewMatrix 
+    invViewMatrix = to $ \c -> c^.jibCamera.invViewMatrix !*! mkTransformationMat identity (c^.displacement)
     projMatrix = jibCamera.projMatrix
     invProjMatrix = jibCamera.invProjMatrix
     position = jibCamera.position
@@ -436,8 +436,8 @@ class (Camera3D c) => OrthographicCamera c where
 
 
 instance OrthographicCamera OrthoCam where
-    orthoCamera v@(V2 w h) near far = OCam (BCam eye3 v (near, far) 0 1) (0, w) (0, h)
-    orthoFromPlanes v l r b t n f = OCam (BCam eye3 v (n, f) 0 1) (l, r) (b, t)
+    orthoCamera v@(V2 w h) near far = OCam (BCam identity v (near, far) 0 1) (0, w) (0, h)
+    orthoFromPlanes v l r b t n f = OCam (BCam identity v (n, f) 0 1) (l, r) (b, t)
     horizontalRange = ocamHRange
     verticalRange = ocamVRange
 
