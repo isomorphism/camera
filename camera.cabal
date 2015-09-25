@@ -36,7 +36,7 @@ library
                         FlexibleContexts, 
                         DeriveDataTypeable, 
                         TemplateHaskell
-  build-depends:        base   >= 4.8  && < 5, 
+  build-depends:        base   >= 4.6  && < 5, 
                         linear >= 1.19 && < 2, 
                         lens   >= 4.8  && < 5
   hs-source-dirs:       src
