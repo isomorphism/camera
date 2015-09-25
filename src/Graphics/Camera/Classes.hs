@@ -212,7 +212,7 @@ instance Camera3D OrthoCam where
                     (c^.nearLimit)  (c^.farLimit)
           !*! mkTransformationMat (c^.coordinateSystem) 0
     invProjMatrix = to $ 
-        \c -> mkTransformationMat (fromMaybe (error "non-orthogonal coordinate system") (inv33 $ c^.coordinateSystem)) 0
+        \c -> mkTransformationMat (inv33 $ c^.coordinateSystem) 0
           !*! inverseOrtho (c^.leftClip)   (c^.rightClip) 
                            (c^.bottomClip) (c^.topClip)
                            (c^.nearLimit)  (c^.farLimit)
@@ -228,7 +228,7 @@ instance Camera3D Cam where
         \c -> perspective (c^.fovVertical.radians) (c^.viewAspect) (c^.nearLimit) (c^.farLimit)
           !*! mkTransformationMat (c^.coordinateSystem) 0
     invProjMatrix = to $ 
-        \c -> mkTransformationMat (fromMaybe (error "non-orthogonal coordinate system") (inv33 $ c^.coordinateSystem)) 0
+        \c -> mkTransformationMat (inv33 $ c^.coordinateSystem) 0
           !*! inversePerspective (c^.fovVertical.radians) (c^.viewAspect) (c^.nearLimit) (c^.farLimit) 
     rangeLimit = pcamBaseCamera.bcamViewRange
     position = pcamBaseCamera.bcamPosition
